@@ -41,9 +41,10 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         present(cameraPicker, animated: true, completion: nil)
     }
     
-    @IBAction func myCollectionButton(_ sender: UIButton) {
-        let myCollectionVC = storyboard?.instantiateViewController(withIdentifier: "MyCollectionViewController") as! MyCollectionViewController
-        self.navigationController?.pushViewController(myCollectionVC, animated: true)
+
+    @IBAction func fishingSpots(_ sender: UIButton) {
+        let FishingVC = storyboard?.instantiateViewController(withIdentifier: "FishSpottingViewController") as! FishSpottingViewController
+        self.navigationController?.pushViewController(FishingVC, animated: true)
     }
     
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {

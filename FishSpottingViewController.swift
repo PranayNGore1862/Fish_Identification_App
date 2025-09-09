@@ -8,6 +8,7 @@ import CoreLocation
 import Alamofire
 import SwiftyJSON
 
+
 // Custom data model for a fishing spot
 struct FishingSpot: Codable {
     let id: String
@@ -15,6 +16,8 @@ struct FishingSpot: Codable {
     let state: String
     let latitude: CLLocationDegrees
     let longitude: CLLocationDegrees
+    let numberOfCatches: Int?
+    let rbffid: Int
 }
 
 // Custom annotation to hold a FishingSpot object
@@ -27,19 +30,25 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
     @IBOutlet weak var mainview: UIView!
     @IBOutlet weak var serachBtn: UIButton!
     @IBOutlet weak var mapView: MKMapView!
+    @IBOutlet weak var locateMeButton: UIButton!
 
-    var locationManager: CLLocationManager!
+    var locationManager: CLLocationManager?
     var lastAPICallRegion: MKCoordinateRegion?
-    let minimumZoomLevelForAPI: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2)
+    let minimumZoomLevelForAPI: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 70, longitudeDelta: 80)
     var bottomBarView: UIView?
     var selectedFishingSpot: FishingSpot?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         locationManager = CLLocationManager()
-        locationManager.requestWhenInUseAuthorization()
+        mapView.showsUserLocation = true
+        mapView.userTrackingMode = .none
+        locationManager?.delegate = self
+        if CLLocationManager.locationServicesEnabled() {
+            checkLocationAuthorization()
+        }
         mapView.delegate = self
-
+        mapView.mapType = .standard
         // Add a gesture recognizer to handle tap on the map to dismiss the bottom bar
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
         tapGesture.delegate = self
@@ -54,6 +63,10 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
             }
             navigationController?.pushViewController(searchVC, animated: true)
         }
+    }
+    
+    @IBAction func locateMeTapped(_ sender: UIButton) {
+        centerToUserLocation()
     }
 
     func showPlaceOnMap(place: Place) {
@@ -141,6 +154,7 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
             case .success(let value):
                 let json = JSON(value)
                 print(json)
+                let totalNumberOfCatches = json["properties"]["number_of_catches"].int
                 // Clear existing fishing spot annotations
                 let fishingSpotAnnotations = self.mapView.annotations.filter { $0 is FishingSpotAnnotation }
                 self.mapView.removeAnnotations(fishingSpotAnnotations)
@@ -153,10 +167,11 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
                            let state = feature["properties"]["state"].string,
                            let latitudeString = feature["properties"]["latitude"].string,
                            let longitudeString = feature["properties"]["longitude"].string,
+                           let rbff_id = feature["properties"]["rbff_id"].int,
                            let latitude = Double(latitudeString),
                            let longitude = Double(longitudeString) {
                             
-                            let spot = FishingSpot(id: feature["id"].string ?? UUID().uuidString, name: primaryName, state: state, latitude: latitude, longitude: longitude)
+                            let spot = FishingSpot(id: feature["id"].string ?? UUID().uuidString, name: primaryName, state: state, latitude: latitude, longitude: longitude, numberOfCatches: totalNumberOfCatches, rbffid: rbff_id)
                             
                             let annotation = FishingSpotAnnotation()
                             annotation.coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -187,20 +202,20 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
         bottomBarView?.removeFromSuperview()
 
         // Create the view for the bottom bar
-        let barHeight: CGFloat = 160 // Increased height to accommodate the button
+        let barHeight: CGFloat = 160 // Increased height for the new label and button
         let safeAreaBottomInset = view.safeAreaInsets.bottom
         let barFrame = CGRect(x: 0, y: view.frame.height, width: view.frame.width, height: barHeight + safeAreaBottomInset)
         bottomBarView = UIView(frame: barFrame)
         bottomBarView?.backgroundColor = .systemBackground
         bottomBarView?.layer.cornerRadius = 10
         bottomBarView?.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-
+        
         let visualEffectView = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
         visualEffectView.frame = bottomBarView?.bounds ?? .zero
         visualEffectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         bottomBarView?.addSubview(visualEffectView)
 
-        // Add labels for the place name and state
+        // Add labels for the place name, state, and number of catches
         let nameLabel = UILabel()
         nameLabel.text = spot.name
         nameLabel.font = UIFont.boldSystemFont(ofSize: 20)
@@ -212,25 +227,28 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
         stateLabel.font = UIFont.systemFont(ofSize: 16)
         stateLabel.translatesAutoresizingMaskIntoConstraints = false
         bottomBarView?.addSubview(stateLabel)
+        
+        let catchesLabel = UILabel()
+        if let catches = spot.numberOfCatches {
+            catchesLabel.text = "Catches: \(catches)"
+        } else {
+            catchesLabel.text = "Catches: N/A"
+        }
+        catchesLabel.font = UIFont.systemFont(ofSize: 16)
+        catchesLabel.translatesAutoresizingMaskIntoConstraints = false
+        bottomBarView?.addSubview(catchesLabel)
 
         // Add the "More Information" button
         let moreInfoButton = UIButton(type: .system)
         moreInfoButton.setTitle("More Information", for: .normal)
         moreInfoButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 17)
         moreInfoButton.translatesAutoresizingMaskIntoConstraints = false
-        self.selectedFishingSpot = spot // Store the spot here
         moreInfoButton.addTarget(self, action: #selector(moreInfoButtonTapped), for: .touchUpInside)
         bottomBarView?.addSubview(moreInfoButton)
 
-        // Store the selected fishing spot on the button so we can access it later
-        // You could also use a property on the view controller to store the selected spot
-        moreInfoButton.tag = Int(spot.id) ?? 0 // Assuming 'id' is a number
-        
-        // An easier way to pass the data would be to use a closure or a property
-        // For this example, we'll store the spot in a property
         self.selectedFishingSpot = spot
 
-        // Add constraints to position the labels and button
+        // Update constraints to include the new label and position the button
         NSLayoutConstraint.activate([
             nameLabel.topAnchor.constraint(equalTo: bottomBarView!.topAnchor, constant: 20),
             nameLabel.leadingAnchor.constraint(equalTo: bottomBarView!.leadingAnchor, constant: 20),
@@ -240,7 +258,11 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
             stateLabel.leadingAnchor.constraint(equalTo: bottomBarView!.leadingAnchor, constant: 20),
             stateLabel.trailingAnchor.constraint(equalTo: bottomBarView!.trailingAnchor, constant: -20),
             
-            moreInfoButton.topAnchor.constraint(equalTo: stateLabel.bottomAnchor, constant: 15),
+            catchesLabel.topAnchor.constraint(equalTo: stateLabel.bottomAnchor, constant: 8),
+            catchesLabel.leadingAnchor.constraint(equalTo: bottomBarView!.leadingAnchor, constant: 20),
+            catchesLabel.trailingAnchor.constraint(equalTo: bottomBarView!.trailingAnchor, constant: -20),
+            
+            moreInfoButton.topAnchor.constraint(equalTo: catchesLabel.bottomAnchor, constant: 15),
             moreInfoButton.centerXAnchor.constraint(equalTo: bottomBarView!.centerXAnchor),
             moreInfoButton.widthAnchor.constraint(equalToConstant: 200),
             moreInfoButton.heightAnchor.constraint(equalToConstant: 40)
@@ -278,7 +300,7 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
             
             // Pass the fishing spot data to the detail view controller
             detailVC.fishingSpot = selectedSpot
-            
+            print(selectedSpot)
             // Push the new view controller onto the navigation stack
             navigationController?.pushViewController(detailVC, animated: true)
         }
@@ -298,7 +320,46 @@ class FishSpottingViewController: UIViewController, MKMapViewDelegate, UIGesture
         return true
     }
     
-   
+    func checkLocationAuthorization() {
+        switch locationManager?.authorizationStatus {
+        case .notDetermined:
+            locationManager?.requestWhenInUseAuthorization()
+        case .restricted, .denied:
+            // Show alert to enable permission
+            break
+        case .authorizedWhenInUse, .authorizedAlways:
+            mapView.showsUserLocation = true
+            locationManager?.startUpdatingLocation()
+        case .none:
+            break
+        @unknown default:
+            break
+        }
+    }
+    
+    // MARK: - Center to User Location
+    func centerToUserLocation() {
+        if let location = locationManager?.location?.coordinate {
+            let region = MKCoordinateRegion(center: location,latitudinalMeters: 1000,longitudinalMeters: 1000)
+            mapView.setRegion(region, animated: true)
+        }
+    }
+
 }
 
+extension FishSpottingViewController: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        checkLocationAuthorization()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // First time update → center map
+        if let location = locations.last {
+            let region = MKCoordinateRegion(center: location.coordinate,latitudinalMeters: 1000,longitudinalMeters: 1000)
+            mapView.setRegion(region, animated: true)
+            // stop updating frequently to save battery
+            locationManager?.stopUpdatingLocation()
+        }
+    }
+}
 

@@ -31,7 +31,7 @@ class SearchViewController: UIViewController, UITableViewDataSource, UITableView
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+        searchbarView.becomeFirstResponder()
         searchbarView.delegate = self
         tableView.dataSource = self
         tableView.delegate = self

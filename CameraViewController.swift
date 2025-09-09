@@ -49,6 +49,7 @@ class CameraViewController: UIViewController, UIImagePickerControllerDelegate, U
                         self.identifierVC(with: json)
                     case .failure(let error):
                         print("Error uploading image: \(error)")
+
                     }
                 }
             }
